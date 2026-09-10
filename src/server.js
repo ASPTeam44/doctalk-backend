@@ -15,6 +15,7 @@ const medicineRoutes = require("./routes/medicineRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const videoRoutes = require("./routes/videoRoutes");
 const {
   notFoundHandler,
   errorHandler,
@@ -47,6 +48,7 @@ app.use("/api/medicine", medicineRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/video", videoRoutes);
 
 // 404 Handler for undefined routes
 app.use(notFoundHandler);

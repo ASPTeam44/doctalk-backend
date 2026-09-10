@@ -167,6 +167,36 @@ const logChatAction = async ({
   }
 };
 
+const logVideoAction = async ({
+  sessionId = null,
+  appointmentId = null,
+  userId = null,
+  action,
+  ipAddress = null,
+  userAgent = null,
+  metadata = null,
+}) => {
+  try {
+    if (!action) {
+      return;
+    }
+
+    await prisma.videoAuditLog.create({
+      data: {
+        sessionId: sessionId || null,
+        appointmentId: appointmentId || null,
+        userId: userId || null,
+        action,
+        ipAddress: ipAddress ? String(ipAddress).slice(0, 100) : null,
+        userAgent: userAgent ? String(userAgent).slice(0, 255) : null,
+        metadata: metadata || null,
+      },
+    });
+  } catch (error) {
+    console.error("[Video Audit Error]:", error.message);
+  }
+};
+
 module.exports = {
   logReportAction,
   logPrescriptionAction,
@@ -174,5 +204,6 @@ module.exports = {
   logOrderAction,
   logPaymentAction,
   logChatAction,
+  logVideoAction,
 };
 

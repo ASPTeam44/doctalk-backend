@@ -44,6 +44,12 @@ model User {
   pharmacyAuditLogs      PharmacyAuditLog[]
   patientPayments        Payment[]              @relation("PatientPayments")
   paymentAuditLogs       PaymentAuditLog[]      @relation("UserPaymentAuditLogs")
+  patientConversations   Conversation[]         @relation("PatientConversations")
+  doctorConversations    Conversation[]         @relation("DoctorConversations")
+  sentMessages           Message[]              @relation("SentMessages")
+  conversationReads      ConversationRead[]     @relation("UserConversationReads")
+  chatAttachments        ChatAttachment[]       @relation("UserChatAttachments")
+  chatAuditLogs          ChatAuditLog[]         @relation("UserChatAuditLogs")
 }
 
 model DoctorProfile {
@@ -87,6 +93,7 @@ model Appointment {
   reportAccesses ReportAccess[]
   prescriptions  Prescription[]
   payments       Payment[]
+  conversations  Conversation[]
 
   @@index([doctorId, appointmentDate])
   @@index([patientId])
@@ -491,5 +498,119 @@ model PaymentAuditLog {
 
   @@index([paymentId])
   @@index([userId])
+  @@index([createdAt])
+}
+
+enum MessageType {
+  TEXT
+  ATTACHMENT
+  SYSTEM
+}
+
+model Conversation {
+  id            String             @id @default(cuid())
+  patientId     String
+  doctorId      String
+  appointmentId String?            @unique
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  lastMessageAt DateTime?
+
+  patient       User               @relation("PatientConversations", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor        User               @relation("DoctorConversations", fields: [doctorId], references: [id], onDelete: Cascade)
+  appointment   Appointment?       @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  messages      Message[]
+  reads         ConversationRead[]
+  attachments   ChatAttachment[]
+  auditLogs     ChatAuditLog[]
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([appointmentId])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id               String          @id @default(cuid())
+  conversationId   String
+  senderId         String
+  messageType      MessageType     @default(TEXT)
+  content          String?
+  attachmentId     String?
+  replyToMessageId String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+
+  conversation     Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender           User            @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  replyToMessage   Message?        @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          Message[]       @relation("MessageReplies")
+  attachment       ChatAttachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  auditLogs        ChatAuditLog[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model ConversationRead {
+  id                String       @id @default(cuid())
+  conversationId    String
+  userId            String
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User         @relation("UserConversationReads", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+model ChatAttachment {
+  id             String       @id @default(cuid())
+  conversationId String
+  uploaderId     String
+  fileName       String
+  fileSize       Int
+  mimeType       String
+  s3Key          String       @unique
+  uploadStatus   UploadStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  uploader       User         @relation("UserChatAttachments", fields: [uploaderId], references: [id], onDelete: Cascade)
+  messages       Message[]
+
+  @@index([conversationId])
+  @@index([uploaderId])
+  @@index([uploadStatus])
+}
+
+model ChatAuditLog {
+  id             String        @id @default(cuid())
+  conversationId String?
+  messageId      String?
+  userId         String?
+  action         String
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  message        Message?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  user           User?         @relation("UserChatAuditLogs", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([userId])
+  @@index([action])
   @@index([createdAt])
 }

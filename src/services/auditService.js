@@ -137,11 +137,42 @@ const logPaymentAction = async ({
   }
 };
 
+const logChatAction = async ({
+  conversationId = null,
+  messageId = null,
+  userId = null,
+  action,
+  ipAddress = null,
+  userAgent = null,
+  metadata = null,
+}) => {
+  try {
+    if (!action) {
+      return;
+    }
+
+    await prisma.chatAuditLog.create({
+      data: {
+        conversationId: conversationId || null,
+        messageId: messageId || null,
+        userId: userId || null,
+        action,
+        ipAddress: ipAddress ? String(ipAddress).slice(0, 100) : null,
+        userAgent: userAgent ? String(userAgent).slice(0, 255) : null,
+        metadata: metadata || null,
+      },
+    });
+  } catch (error) {
+    console.error("[Chat Audit Error]:", error.message);
+  }
+};
+
 module.exports = {
   logReportAction,
   logPrescriptionAction,
   logPharmacyAction,
   logOrderAction,
   logPaymentAction,
+  logChatAction,
 };
 

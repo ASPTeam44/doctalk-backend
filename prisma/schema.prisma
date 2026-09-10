@@ -1,0 +1,495 @@
+// This is your Prisma schema file
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  PHARMACY
+  ADMIN
+}
+
+model User {
+  id             String           @id @default(cuid())
+  name           String
+  email          String           @unique
+  phone          String           @unique
+  password       String
+  role           Role
+  createdAt      DateTime         @default(now())
+
+  doctorProfile  DoctorProfile?
+
+  patientAppointments    Appointment[]          @relation("PatientAppointments")
+  doctorAppointments     Appointment[]          @relation("DoctorAppointments")
+  doctorSchedules        DoctorSchedule[]       @relation("DoctorSchedules")
+  patientMedicalReports  MedicalReport[]        @relation("PatientMedicalReports")
+  doctorReportAccess     ReportAccess[]         @relation("DoctorReportAccess")
+  patientGrantedAccess   ReportAccess[]         @relation("PatientGrantedAccess")
+  reportAuditLogs        ReportAuditLog[]
+  patientPrescriptions   Prescription[]         @relation("PatientPrescriptions")
+  doctorPrescriptions    Prescription[]         @relation("DoctorPrescriptions")
+  prescriptionAuditLogs  PrescriptionAuditLog[]
+  pharmacyProfile        PharmacyProfile?       @relation("UserPharmacyProfile")
+  patientOrders          MedicineOrder[]        @relation("PatientMedicineOrders")
+  orderAuditLogs         OrderAuditLog[]
+  pharmacyAuditLogs      PharmacyAuditLog[]
+  patientPayments        Payment[]              @relation("PatientPayments")
+  paymentAuditLogs       PaymentAuditLog[]      @relation("UserPaymentAuditLogs")
+}
+
+model DoctorProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  specialization   String
+  experience       Int
+  consultationFee  Int
+  qualification    String
+  hospitalName     String?
+  bio              String?
+  languages        String?
+  verified         Boolean  @default(false)
+  profileImage     String?
+  timezone         String   @default("UTC")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model Appointment {
+  id              String              @id @default(cuid())
+  patientId       String
+  doctorId        String
+  appointmentDate DateTime
+  symptoms        String?
+  status          AppointmentStatus   @default(PENDING)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @default(now()) @updatedAt
+
+  patient        User           @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctor         User           @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  reportAccesses ReportAccess[]
+  prescriptions  Prescription[]
+  payments       Payment[]
+
+  @@index([doctorId, appointmentDate])
+  @@index([patientId])
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model DoctorSchedule {
+  id           String     @id @default(cuid())
+  doctorId     String
+  dayOfWeek    DayOfWeek
+  startTime    String
+  endTime      String
+  slotDuration Int        @default(30)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  doctor User @relation("DoctorSchedules", fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek])
+  @@index([doctorId])
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADED
+  FAILED
+}
+
+model MedicalReport {
+  id           String       @id @default(cuid())
+  patientId    String
+  title        String
+  reportType   String
+  fileName     String
+  mimeType     String
+  fileSize     Int
+  s3Key        String       @unique
+  reportDate   DateTime
+  uploadStatus UploadStatus @default(PENDING)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  patient   User             @relation("PatientMedicalReports", fields: [patientId], references: [id], onDelete: Cascade)
+  accesses  ReportAccess[]
+  auditLogs ReportAuditLog[]
+
+  @@index([patientId])
+  @@index([reportDate])
+}
+
+model ReportAccess {
+  id                 String    @id @default(cuid())
+  reportId           String
+  doctorId           String
+  grantedByPatientId String
+  appointmentId      String?
+  expiresAt          DateTime?
+  createdAt          DateTime  @default(now())
+  revokedAt          DateTime?
+
+  report           MedicalReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  doctor           User          @relation("DoctorReportAccess", fields: [doctorId], references: [id], onDelete: Cascade)
+  grantedByPatient User          @relation("PatientGrantedAccess", fields: [grantedByPatientId], references: [id], onDelete: Cascade)
+  appointment      Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([doctorId, reportId])
+  @@index([reportId])
+  @@index([grantedByPatientId])
+}
+
+model ReportAuditLog {
+  id        String   @id @default(cuid())
+  reportId  String
+  userId    String
+  action    String
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  report MedicalReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([userId])
+}
+
+enum PrescriptionStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+model Prescription {
+  id            String             @id @default(cuid())
+  appointmentId String
+  patientId     String
+  doctorId      String
+  diagnosis     String
+  clinicalNotes String?
+  instructions  String?
+  status        PrescriptionStatus @default(DRAFT)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  appointment Appointment            @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient     User                   @relation("PatientPrescriptions", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor      User                   @relation("DoctorPrescriptions", fields: [doctorId], references: [id], onDelete: Cascade)
+  items          PrescriptionItem[]
+  auditLogs      PrescriptionAuditLog[]
+  medicineOrders MedicineOrder[]
+
+  @@index([appointmentId])
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([status])
+}
+
+model PrescriptionItem {
+  id             String   @id @default(cuid())
+  prescriptionId String
+  medicineName   String
+  strength       String?
+  dosage         String
+  frequency      String
+  duration       Int
+  durationUnit   String   @default("DAYS")
+  route          String   @default("ORAL")
+  instructions   String?
+  quantity       Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+}
+
+model PrescriptionAuditLog {
+  id             String   @id @default(cuid())
+  prescriptionId String
+  userId         String
+  action         String
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+  @@index([userId])
+}
+
+model PharmacyProfile {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  pharmacyName       String
+  licenseNumber      String             @unique
+  registrationNumber String?
+  phone              String
+  email              String?
+  addressLine1       String
+  addressLine2       String?
+  city               String
+  state              String
+  country            String
+  postalCode         String
+  latitude           Float?
+  longitude          Float?
+  deliveryRadiusKm   Float?             @default(10.0)
+  verified           Boolean            @default(false)
+  active             Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  user        User               @relation("UserPharmacyProfile", fields: [userId], references: [id], onDelete: Cascade)
+  inventories Inventory[]
+  orders      MedicineOrder[]
+  auditLogs   PharmacyAuditLog[]
+
+  @@index([city])
+  @@index([state])
+  @@index([verified, active])
+}
+
+model Medicine {
+  id                   String             @id @default(cuid())
+  name                 String
+  genericName          String?
+  brandName            String?
+  strength             String?
+  dosageForm           String
+  manufacturer         String?
+  description          String?
+  prescriptionRequired Boolean            @default(true)
+  active               Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  inventories Inventory[]
+  orderItems  MedicineOrderItem[]
+
+  @@index([name])
+  @@index([genericName])
+  @@index([brandName])
+  @@index([active])
+}
+
+model Inventory {
+  id               String   @id @default(cuid())
+  pharmacyId       String
+  medicineId       String
+  sku              String?
+  sellingPrice     Float
+  stockQuantity    Int      @default(0)
+  reservedQuantity Int      @default(0)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  pharmacy PharmacyProfile @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  medicine Medicine        @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+
+  @@unique([pharmacyId, medicineId])
+  @@index([pharmacyId])
+  @@index([medicineId])
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  PACKED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model MedicineOrder {
+  id                   String              @id @default(cuid())
+  patientId            String
+  pharmacyId           String
+  prescriptionId       String?
+  status               OrderStatus         @default(PENDING)
+  subtotal             Float
+  deliveryFee          Float               @default(0)
+  totalAmount          Float
+  deliveryName         String
+  deliveryPhone        String
+  deliveryAddressLine1 String
+  deliveryAddressLine2 String?
+  deliveryCity         String
+  deliveryState        String
+  deliveryCountry      String
+  deliveryPostalCode   String
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  patient      User                @relation("PatientMedicineOrders", fields: [patientId], references: [id], onDelete: Cascade)
+  pharmacy     PharmacyProfile     @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  prescription Prescription?       @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+  items        MedicineOrderItem[]
+  auditLogs    OrderAuditLog[]
+  payments     Payment[]
+
+  @@index([patientId])
+  @@index([pharmacyId])
+  @@index([prescriptionId])
+  @@index([status])
+}
+
+model MedicineOrderItem {
+  id                   String   @id @default(cuid())
+  orderId              String
+  medicineId           String
+  medicineNameSnapshot String
+  strengthSnapshot     String?
+  dosageFormSnapshot   String?
+  quantity             Int
+  unitPrice            Float
+  totalPrice           Float
+  createdAt            DateTime @default(now())
+
+  order    MedicineOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  medicine Medicine      @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([medicineId])
+}
+
+model OrderAuditLog {
+  id        String   @id @default(cuid())
+  orderId   String
+  userId    String
+  action    String
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  order MedicineOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([userId])
+}
+
+model PharmacyAuditLog {
+  id         String   @id @default(cuid())
+  pharmacyId String
+  userId     String
+  action     String
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  pharmacy PharmacyProfile @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@index([userId])
+}
+
+enum PaymentProvider {
+  STRIPE
+  RAZORPAY
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentPurpose {
+  CONSULTATION
+  MEDICINE_ORDER
+}
+
+model Payment {
+  id                String          @id @default(cuid())
+  patientId         String
+  appointmentId     String?
+  medicineOrderId   String?
+  provider          PaymentProvider
+  purpose           PaymentPurpose
+  status            PaymentStatus   @default(CREATED)
+  amount            Decimal         @db.Decimal(10, 2)
+  currency          String
+  providerPaymentId String?         @unique
+  providerOrderId   String?         @unique
+  providerSignature String?
+  failureCode       String?
+  failureMessage    String?
+  refundAmount      Decimal         @default(0) @db.Decimal(10, 2)
+  idempotencyKey    String?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  patient       User             @relation("PatientPayments", fields: [patientId], references: [id], onDelete: Cascade)
+  appointment   Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  medicineOrder MedicineOrder?   @relation(fields: [medicineOrderId], references: [id], onDelete: SetNull)
+  auditLogs     PaymentAuditLog[]
+
+  @@index([patientId])
+  @@index([appointmentId])
+  @@index([medicineOrderId])
+  @@index([provider])
+  @@index([status])
+  @@index([providerPaymentId])
+  @@index([providerOrderId])
+  @@index([idempotencyKey])
+}
+
+model PaymentAuditLog {
+  id        String   @id @default(cuid())
+  paymentId String
+  userId    String?
+  action    String
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  user    User?   @relation("UserPaymentAuditLogs", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+  @@index([userId])
+  @@index([createdAt])
+}
